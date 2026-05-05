@@ -1,4 +1,4 @@
-# Axonas3d-eng-mfg.github.io<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -418,6 +418,18 @@
   <h1 class="page-title">Get your <em>quote</em><br>instantly.</h1>
   <p class="page-sub">Upload your CAD file, configure your print settings, and confirm — we'll get in touch to finalize your order.</p>
 
+  <form id="quoteForm" enctype="multipart/form-data">
+    <input type="hidden" name="owner_email" id="ownerEmail">
+    <input type="hidden" name="quote_id" id="quoteId">
+    <input type="hidden" name="estimated_total" id="estimatedTotalField">
+    <input type="hidden" name="file_name" id="fileNameField">
+    <input type="hidden" name="file_size" id="fileSizeField">
+    <input type="hidden" name="technology_label" id="technologyLabelField">
+    <input type="hidden" name="material_label" id="materialLabelField">
+    <input type="hidden" name="resolution_label" id="resolutionLabelField">
+    <input type="hidden" name="infill_label" id="infillLabelField">
+    <input type="hidden" name="post_processing_label" id="postProcessingLabelField">
+
   <!-- Steps bar -->
   <div class="steps-bar">
     <div class="step-pill active" id="spill-1">
@@ -440,7 +452,7 @@
   <!-- Panel 1: Upload -->
   <div class="panel active" id="panel-1">
     <div class="upload-zone" id="uploadZone">
-      <input type="file" id="fileInput" accept=".stl,.obj,.step,.stp,.3mf,.iges,.igs">
+      <input type="file" id="fileInput" name="cad_file" accept=".stl,.obj,.step,.stp,.3mf,.iges,.igs">
       <div class="upload-icon">
         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       </div>
@@ -467,7 +479,7 @@
     <div class="config-grid">
       <div class="field-group">
         <label>Print technology</label>
-        <select id="tech" onchange="updatePrice()">
+        <select id="tech" name="technology" onchange="updatePrice()">
           <option value="fdm">FDM — Fused Deposition</option>
           <option value="msla">MSLA — Resin (high detail)</option>
         </select>
@@ -475,7 +487,7 @@
 
       <div class="field-group">
         <label>Material</label>
-        <select id="material" onchange="updatePrice()">
+        <select id="material" name="material" onchange="updatePrice()">
           <option value="pla">PLA (standard)</option>
           <option value="petg">PETG (tough)</option>
           <option value="abs">ABS (heat resistant)</option>
@@ -489,7 +501,7 @@
 
       <div class="field-group">
         <label>Layer height / resolution</label>
-        <select id="resolution" onchange="updatePrice()">
+        <select id="resolution" name="resolution" onchange="updatePrice()">
           <option value="draft">Draft — 0.3mm (fast)</option>
           <option value="standard" selected>Standard — 0.2mm</option>
           <option value="fine">Fine — 0.1mm</option>
@@ -499,7 +511,7 @@
 
       <div class="field-group">
         <label>Infill density</label>
-        <select id="infill" onchange="updatePrice()">
+        <select id="infill" name="infill" onchange="updatePrice()">
           <option value="15">15% — Lightweight</option>
           <option value="30" selected>30% — Standard</option>
           <option value="50">50% — Durable</option>
@@ -511,14 +523,14 @@
         <label>Quantity</label>
         <div class="qty-wrap">
           <button class="qty-btn" onclick="changeQty(-1)">−</button>
-          <input class="qty-input" type="number" id="qty" value="1" min="1" max="100" onchange="updatePrice()">
+          <input class="qty-input" type="number" id="qty" name="quantity" value="1" min="1" max="100" onchange="updatePrice()">
           <button class="qty-btn" onclick="changeQty(1)">+</button>
         </div>
       </div>
 
       <div class="field-group">
         <label>Post-processing</label>
-        <select id="post" onchange="updatePrice()">
+        <select id="post" name="post_processing" onchange="updatePrice()">
           <option value="none">None</option>
           <option value="sanding">Sanding & smoothing</option>
           <option value="painting">Sanding + painting</option>
@@ -528,7 +540,7 @@
 
       <div class="field-group full">
         <label>Special notes (optional)</label>
-        <textarea id="notes" placeholder="Color preference, tolerance requirements, assembly needs..."></textarea>
+        <textarea id="notes" name="notes" placeholder="Color preference, tolerance requirements, assembly needs..."></textarea>
       </div>
     </div>
 
@@ -565,22 +577,23 @@
     <div class="config-grid">
       <div class="field-group">
         <label>Your name</label>
-        <input type="text" id="contactName" placeholder="Jane Smith">
+        <input type="text" id="contactName" name="customer_name" placeholder="Jane Smith">
       </div>
       <div class="field-group">
         <label>Email address</label>
-        <input type="email" id="contactEmail" placeholder="jane@university.edu">
+        <input type="email" id="contactEmail" name="customer_email" placeholder="jane@university.edu">
       </div>
       <div class="field-group full">
         <label>Phone (optional)</label>
-        <input type="text" id="contactPhone" placeholder="+1 (555) 000-0000">
+        <input type="text" id="contactPhone" name="customer_phone" placeholder="+1 (555) 000-0000">
       </div>
     </div>
 
     <div class="btn-row">
       <button class="btn btn-outline" onclick="goTo(2)">← Back</button>
-      <button class="btn btn-primary" onclick="submitOrder()">Confirm order →</button>
+      <button class="btn btn-primary" id="submitBtn" onclick="submitOrder()">Confirm order →</button>
     </div>
+    <p id="submitStatus" style="display:none;margin-top:16px;font-family:var(--mono);font-size:11px;letter-spacing:0.08em;color:var(--muted);text-transform:uppercase;"></p>
   </div>
 
   <!-- Panel 4: Success -->
@@ -590,16 +603,39 @@
         <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
       <h2 class="success-title">Order received.</h2>
-      <p class="success-msg">We've got your file and specs. The Axonas team will review your order and reach out within <strong>24 hours</strong> to confirm details and payment.</p>
+      <p class="success-msg">We've got your file and specs. A confirmation email has been sent to you, and the Axonas team will review your order and reach out within <strong>24 hours</strong> to confirm details and payment.</p>
       <p class="success-msg" style="margin-top:16px; font-family:var(--mono); font-size:12px; color:rgba(255,255,255,0.25); letter-spacing:0.1em;">
         FDM · MSLA · Prototyping · Jewelry
       </p>
     </div>
   </div>
+  </form>
 </main>
 
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script>
+  /*
+    EMAIL SETUP — REQUIRED BEFORE PUBLISHING
+    1) Create an EmailJS account: https://www.emailjs.com/
+    2) Add your email service, for example Gmail, Outlook, etc.
+    3) Create TWO templates:
+       - One template for AXONAS / owner quote notification
+       - One template for customer confirmation
+    4) Replace the placeholders below with your real EmailJS IDs.
+    5) In the owner template, enable a Form File Attachment named `cad_file`
+       if you want to receive the uploaded CAD file by email.
+  */
+  const EMAILJS_PUBLIC_KEY = "5bb_qdbP00bCTw9yv";
+  const EMAILJS_SERVICE_ID = "service_dq577to";
+  const EMAILJS_OWNER_TEMPLATE_ID = "template_duume4c";
+  const EMAILJS_CUSTOMER_TEMPLATE_ID = "template_1wr8cpb";
+  const OWNER_EMAIL = "axonas3d@gmail.com";
+
   let uploadedFile = null;
+
+  if (window.emailjs && EMAILJS_PUBLIC_KEY !== "YOUR_EMAILJS_PUBLIC_KEY") {
+    emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+  }
 
   // Pricing engine
   const basePrices = {
@@ -661,6 +697,24 @@
     ).join('');
     document.getElementById('summaryRows').innerHTML = html;
     document.getElementById('summaryTotal').textContent = '$' + getPrice();
+    updateHiddenEmailFields();
+  }
+
+  function updateHiddenEmailFields() {
+    const tech = document.getElementById('tech').value;
+    const mat = document.getElementById('material').value;
+    const res = document.getElementById('resolution').value;
+    const inf = document.getElementById('infill').value;
+    const post = document.getElementById('post').value;
+    document.getElementById('ownerEmail').value = OWNER_EMAIL;
+    document.getElementById('estimatedTotalField').value = '$' + getPrice();
+    document.getElementById('fileNameField').value = uploadedFile ? uploadedFile.name : '';
+    document.getElementById('fileSizeField').value = uploadedFile ? (uploadedFile.size / 1024 / 1024).toFixed(2) + ' MB' : '';
+    document.getElementById('technologyLabelField').value = tech === 'fdm' ? 'FDM' : 'MSLA Resin';
+    document.getElementById('materialLabelField').value = materialNames[mat] || mat;
+    document.getElementById('resolutionLabelField').value = resNames[res] || res;
+    document.getElementById('infillLabelField').value = inf + '%';
+    document.getElementById('postProcessingLabelField').value = postNames[post] || post;
   }
 
   function goTo(step) {
@@ -686,6 +740,7 @@
     document.getElementById('fileInfo').classList.remove('visible');
     document.getElementById('nextBtn1').disabled = true;
     document.getElementById('fileInput').value = '';
+    updateHiddenEmailFields();
   }
 
   function handleFile(file) {
@@ -695,6 +750,7 @@
     document.getElementById('fileSize').textContent = (file.size / 1024 / 1024).toFixed(2) + ' MB';
     document.getElementById('fileInfo').classList.add('visible');
     document.getElementById('nextBtn1').disabled = false;
+    updateHiddenEmailFields();
   }
 
   document.getElementById('fileInput').addEventListener('change', e => handleFile(e.target.files[0]));
@@ -708,12 +764,88 @@
     handleFile(e.dataTransfer.files[0]);
   });
 
-  function submitOrder() {
+  function isEmailConfigured() {
+    return EMAILJS_PUBLIC_KEY !== 'YOUR_EMAILJS_PUBLIC_KEY' &&
+      EMAILJS_SERVICE_ID !== 'YOUR_EMAILJS_SERVICE_ID' &&
+      EMAILJS_OWNER_TEMPLATE_ID !== 'YOUR_OWNER_QUOTE_TEMPLATE_ID' &&
+      EMAILJS_CUSTOMER_TEMPLATE_ID !== 'YOUR_CUSTOMER_CONFIRMATION_TEMPLATE_ID';
+  }
+
+  function setSubmitStatus(message, isError = false) {
+    const status = document.getElementById('submitStatus');
+    status.style.display = 'block';
+    status.style.color = isError ? '#ff8a8a' : 'var(--muted)';
+    status.textContent = message;
+  }
+
+  async function submitOrder() {
     const name = document.getElementById('contactName').value.trim();
     const email = document.getElementById('contactEmail').value.trim();
+
+    if (!uploadedFile) { alert('Please upload your CAD file first.'); goTo(1); return; }
     if (!name || !email) { alert('Please enter your name and email.'); return; }
-    goTo(4);
+
+    if (!isEmailConfigured()) {
+      alert('EmailJS is not configured yet. Replace the EmailJS placeholder values in the HTML before publishing.');
+      return;
+    }
+
+    const submitBtn = document.getElementById('submitBtn');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending...';
+    setSubmitStatus('Sending quote request...');
+
+    try {
+      document.getElementById('quoteId').value = 'AX-' + Date.now();
+      updateHiddenEmailFields();
+
+      const form = document.getElementById('quoteForm');
+
+      // 1) Send full quote request to Axonas / owner.
+      // If your EmailJS owner template has a Form File Attachment named `cad_file`,
+      // the uploaded CAD file will be attached to this email.
+      await emailjs.sendForm(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_OWNER_TEMPLATE_ID,
+        form,
+        { publicKey: EMAILJS_PUBLIC_KEY }
+      );
+
+      // 2) Send confirmation email to the customer.
+      // Use {{customer_email}} as the recipient field in this EmailJS template.
+      await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_CUSTOMER_TEMPLATE_ID,
+        {
+          to_email: email,
+          customer_email: email,
+          customer_name: name,
+          quote_id: document.getElementById('quoteId').value,
+          estimated_total: document.getElementById('estimatedTotalField').value,
+          file_name: document.getElementById('fileNameField').value,
+          technology_label: document.getElementById('technologyLabelField').value,
+          material_label: document.getElementById('materialLabelField').value,
+          resolution_label: document.getElementById('resolutionLabelField').value,
+          infill_label: document.getElementById('infillLabelField').value,
+          quantity: document.getElementById('qty').value,
+          post_processing_label: document.getElementById('postProcessingLabelField').value,
+          notes: document.getElementById('notes').value.trim() || 'None'
+        },
+        { publicKey: EMAILJS_PUBLIC_KEY }
+      );
+
+      goTo(4);
+    } catch (error) {
+      console.error('EmailJS error:', error);
+      setSubmitStatus('Something went wrong. Please try again or email us directly.', true);
+      alert('The quote could not be sent. Check the console and your EmailJS template/service IDs.');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Confirm order →';
+    }
   }
+
+  document.getElementById('quoteForm').addEventListener('submit', e => e.preventDefault());
 
   updatePrice();
 </script>
