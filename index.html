@@ -516,6 +516,29 @@ const SMS_NUMBER = '+19152806996';
 const TAX_RATE = 0.0825;
 const MIN_ORDER = 5.00;
 
+// Machine time pricing. This is a rough quoting estimate, not a slicer replacement.
+// Fine layer heights increase machine time because the print has more layers.
+const MACHINE_RATE_PER_HOUR = {
+  fdm: 3.00,   // $/hour for FDM printer time
+  msla: 4.00   // $/hour for MSLA printer time
+};
+
+const LAYER_TIME_MULT = {
+  fdm: {
+    '0.28': 0.75,
+    '0.20': 1.00,
+    '0.12': 1.55,
+    '0.08': 2.25
+  },
+  msla: {
+    '0.15': 0.65,
+    '0.08': 1.00,
+    '0.05': 1.55,
+    '0.03': 2.45,
+    '0.01': 6.00
+  }
+};
+
 // Price per gram (material cost / 1000 * markup 2x)
 const PRICE_PER_GRAM = {
   pla:   0.020 * 2,   // $0.040/g
@@ -535,6 +558,26 @@ const PRICE_PER_GRAM = {
 const DENSITY = {
   pla:1.24, petg:1.27, abs:1.05, tpu95:1.21, tpu85:1.20, asa:1.07,
   resin_std:1.10, resin_abs:1.12, resin_flex:1.08, resin_tough:1.15, resin_clear:1.10
+};
+
+
+// Small material/weight adjustment by layer height.
+// In real slicing, layer height mostly changes print time, not the true model volume.
+// This multiplier adds a modest allowance for line overlap, extra detail, supports, and process waste.
+const LAYER_MASS_MULT = {
+  fdm: {
+    '0.28': 0.98,  // draft: slightly less overlap/detail
+    '0.20': 1.00,  // standard baseline
+    '0.12': 1.03,  // fine: small extra allowance
+    '0.08': 1.06   // ultra fine: highest allowance
+  },
+  msla: {
+    '0.15': 0.98,  // draft
+    '0.08': 1.00,  // standard baseline
+    '0.05': 1.02,  // fine
+    '0.03': 1.04,  // ultra
+    '0.01': 1.06   // extreme detail
+  }
 };
 
 const MAT_NAMES = {
@@ -603,56 +646,128 @@ function getMat()  {
 
 // ── Volume & mass estimation ─────────────────────────────────
 // Calculate printed volume considering infill/wall/solid
+function getLayerMassMultiplier() {
+  const tech = getTech();
+  const layerId = tech === 'fdm'
+    ? document.getElementById('fdm-resolution').value
+    : document.getElementById('msla-resolution').value;
+  return (LAYER_MASS_MULT[tech] && LAYER_MASS_MULT[tech][layerId]) || 1;
+}
+
+function getLayerHeightLabel() {
+  const tech = getTech();
+  const layer = tech === 'fdm'
+    ? document.getElementById('fdm-resolution').value
+    : document.getElementById('msla-resolution').value;
+  return layer + 'mm';
+}
+
+function getLayerTimeMultiplier() {
+  const tech = getTech();
+  const layerId = tech === 'fdm'
+    ? document.getElementById('fdm-resolution').value
+    : document.getElementById('msla-resolution').value;
+  return (LAYER_TIME_MULT[tech] && LAYER_TIME_MULT[tech][layerId]) || 1;
+}
+
+function getEstimatedMachineHours() {
+  const tech = getTech();
+  const printedVol = getPrintedVolumeCm3();
+  if (printedVol === null) return null;
+
+  if (tech === 'fdm') {
+    // Baseline: about 0.045 hr/cm3 at 0.20 mm, then scaled by layer height.
+    // Setup/load/unload time is intentionally small so tiny parts still show some machine time.
+    const setupHours = 0.20;
+    return setupHours + (printedVol * 0.045 * getLayerTimeMultiplier());
+  }
+
+  // MSLA time depends mostly on number of layers, so Z height and layer height matter strongly.
+  if (bboxDims) {
+    const layerHeightMm = parseFloat(document.getElementById('msla-resolution').value) || 0.08;
+    const layers = Math.max(1, bboxDims.z / layerHeightMm);
+    const secondsPerLayerAtStandard = 8;
+    const setupHours = 0.35;
+    return setupHours + ((layers * secondsPerLayerAtStandard) / 3600);
+  }
+
+  return 0.35 + (printedVol * 0.04 * getLayerTimeMultiplier());
+}
+
+// Calculate printed volume considering infill/wall/solid.
+// FDM no longer uses bounding-box empty space as printable interior.
+// It uses the actual solid model volume and scales only the non-wall fraction by infill.
 function getPrintedVolumeCm3() {
   if (meshVolumeCm3 === null) return null;
   const tech = getTech();
-  const solidVol = meshVolumeCm3;           // full solid volume
-  const bboxVol  = bboxVolumeCm3;
-  const shellVol = solidVol;               // outer shell approx = mesh volume
-  const interiorVol = Math.max(0, bboxVol - solidVol); // rough interior void
+  const solidVol = meshVolumeCm3; // full solid model volume in cm3
 
   if (tech === 'fdm') {
     const infill = parseFloat(document.getElementById('fdm-infill').value);
-    // printed = solid shell + infill fraction of interior
-    return shellVol * 0.25 + (shellVol * 0.75 + interiorVol) * infill;
-  } else {
-    if (resinFillMode === 'solid') return solidVol;
-    if (resinFillMode === 'infill') {
-      const infill = parseFloat(document.getElementById('msla-infill').value);
-      return shellVol * 0.2 + (solidVol * 0.8 + interiorVol) * infill;
-    }
-    // wall thickness mode: approximate shell as fraction of bbox
-    if (resinFillMode === 'wall' && bboxDims) {
-      const wallMm = parseFloat(document.getElementById('msla-wall').value);
-      // surface area * wall thickness approximation
-      const sa = 2*(bboxDims.x*bboxDims.y + bboxDims.y*bboxDims.z + bboxDims.x*bboxDims.z); // mm2
-      const wallVol = sa * wallMm / 1000; // cm3
-      return Math.min(wallVol, solidVol);
-    }
-    return solidVol * 0.3;
+    const wallFraction = 0.25; // approximate walls/top/bottom as 25% of solid model volume
+    return solidVol * (wallFraction + infill * (1 - wallFraction));
   }
+
+  if (resinFillMode === 'solid') return solidVol;
+
+  if (resinFillMode === 'infill') {
+    const infill = parseFloat(document.getElementById('msla-infill').value);
+    const wallFraction = 0.20; // approximate resin shell as 20% of solid model volume
+    return solidVol * (wallFraction + infill * (1 - wallFraction));
+  }
+
+  // Wall thickness mode: approximate shell from bounding-box surface area.
+  // This is still a rough estimate, but it avoids charging based on all empty bbox space.
+  if (resinFillMode === 'wall' && bboxDims) {
+    const wallMm = parseFloat(document.getElementById('msla-wall').value);
+    const sa = 2 * (bboxDims.x * bboxDims.y + bboxDims.y * bboxDims.z + bboxDims.x * bboxDims.z); // mm2
+    const wallVol = sa * wallMm / 1000; // cm3
+    return Math.min(wallVol, solidVol);
+  }
+
+  return solidVol * 0.3;
 }
 
 function getEstimatedGrams() {
   const vol = getPrintedVolumeCm3();
   if (vol === null) return null;
   const mat = getMat();
-  return vol * (DENSITY[mat] || 1.1);
+  const layerMassMultiplier = getLayerMassMultiplier();
+  return vol * (DENSITY[mat] || 1.1) * layerMassMultiplier;
 }
 
 // ── Price calculation ────────────────────────────────────────
 function calcPrice() {
   const grams = getEstimatedGrams();
-  if (grams === null) return null;
+  const machineHours = getEstimatedMachineHours();
+  if (grams === null || machineHours === null) return null;
+  const tech  = getTech();
   const mat   = getMat();
   const qty   = parseInt(document.getElementById('qty').value) || 1;
   const post  = parseFloat(document.getElementById('post').value) || 0;
   const ppg   = PRICE_PER_GRAM[mat] || 0.04;
+  const machineRate = MACHINE_RATE_PER_HOUR[tech] || 3.00;
   const materialCost = grams * ppg * qty;
-  const subtotal = Math.max(MIN_ORDER, materialCost + post);
+  const machineCost = machineHours * machineRate * qty;
+  const subtotalBeforeMin = materialCost + machineCost + post;
+  const subtotal = Math.max(MIN_ORDER, subtotalBeforeMin);
   const tax  = subtotal * TAX_RATE;
   const total = subtotal + tax;
-  return { grams, materialCost, post, subtotal, tax, total, qty, ppg };
+  return {
+    grams,
+    materialCost,
+    machineHours,
+    machineRate,
+    machineCost,
+    post,
+    subtotal,
+    tax,
+    total,
+    qty,
+    ppg,
+    layerMassMultiplier: getLayerMassMultiplier(),
+    layerTimeMultiplier: getLayerTimeMultiplier()
+  };
 }
 
 function updatePrice() {
@@ -661,12 +776,16 @@ function updatePrice() {
 
   const rowsEl = document.getElementById('priceRows');
   const minNote = document.getElementById('priceMinNote');
-  const wasMin = p.materialCost + p.post < MIN_ORDER;
+  const wasMin = p.materialCost + p.machineCost + p.post < MIN_ORDER;
   minNote.style.display = wasMin ? 'block' : 'none';
 
   rowsEl.innerHTML = [
     ['Est. weight', p.grams.toFixed(1) + 'g × ' + p.qty + (p.qty>1?' units':'')],
+    Math.abs(p.layerMassMultiplier - 1) > 0.001 ? ['Layer-height adj.', (p.layerMassMultiplier * 100).toFixed(0) + '% weight factor'] : null,
     ['Material cost', '$' + (p.materialCost).toFixed(2)],
+    ['Est. machine time', p.machineHours.toFixed(2) + ' hr × ' + p.qty + (p.qty>1?' units':'')],
+    Math.abs(p.layerTimeMultiplier - 1) > 0.001 ? ['Layer-time adj.', (p.layerTimeMultiplier * 100).toFixed(0) + '% time factor'] : null,
+    ['Machine time cost', '$' + p.machineCost.toFixed(2)],
     p.post > 0 ? ['Post-processing', '+$' + p.post.toFixed(2)] : null,
     wasMin ? ['Minimum order', '$' + MIN_ORDER.toFixed(2)] : null,
     ['Tax (8.25%)', '+$' + p.tax.toFixed(2)],
@@ -701,8 +820,12 @@ function buildSummary(p) {
     ['Technology', tech === 'fdm' ? 'FDM' : 'MSLA Resin'],
     ['Material', MAT_NAMES[mat] || mat],
     ['Layer height', resLabel],
+    ['Layer weight factor', (p.layerMassMultiplier * 100).toFixed(0) + '%'],
+    ['Layer time factor', (p.layerTimeMultiplier * 100).toFixed(0) + '%'],
     ['Fill', fillLabel],
     ['Est. weight', p.grams.toFixed(1) + 'g × ' + p.qty + ' unit(s)'],
+    ['Est. machine time', p.machineHours.toFixed(2) + ' hr × ' + p.qty + ' unit(s)'],
+    ['Machine time cost', '$' + p.machineCost.toFixed(2)],
     ['Post-processing', POST_NAMES[document.getElementById('post').value]||'None'],
     ['Subtotal', '$' + p.subtotal.toFixed(2)],
     ['Tax (8.25%)', '$' + p.tax.toFixed(2)],
@@ -1085,6 +1208,8 @@ Quote Details:
 Technology: ${technologyLabel}
 Material: ${materialLabel}
 Layer height: ${resLabel}
+Layer weight factor: ${(p.layerMassMultiplier * 100).toFixed(0)}%
+Layer time factor: ${(p.layerTimeMultiplier * 100).toFixed(0)}%
 Fill: ${fillLabel}
 Quantity: ${p.qty} unit(s)
 Post-processing: ${postLabel}
@@ -1094,9 +1219,11 @@ Mesh volume: ${meshVolumeCm3 ? meshVolumeCm3.toFixed(2) : 'N/A'} cm³
 Bounding box: ${bboxDims ? `${bboxDims.x.toFixed(1)} × ${bboxDims.y.toFixed(1)} × ${bboxDims.z.toFixed(1)} mm` : 'N/A'}
 Triangles: ${triCount ? triCount.toLocaleString() : 'N/A'}
 Estimated print weight: ${p.grams.toFixed(1)} g
+Estimated machine time: ${p.machineHours.toFixed(2)} hr
 
 Pricing:
 Material cost: $${p.materialCost.toFixed(2)}
+Machine time cost: $${p.machineCost.toFixed(2)}
 Post-processing: $${p.post.toFixed(2)}
 Subtotal: $${p.subtotal.toFixed(2)}
 Tax (8.25%): $${p.tax.toFixed(2)}
@@ -1121,10 +1248,13 @@ File: ${fileName}
 Technology: ${technologyLabel}
 Material: ${materialLabel}
 Layer height: ${resLabel}
+Layer weight factor: ${(p.layerMassMultiplier * 100).toFixed(0)}%
+Layer time factor: ${(p.layerTimeMultiplier * 100).toFixed(0)}%
 Fill: ${fillLabel}
 Quantity: ${p.qty} unit(s)
 Post-processing: ${postLabel}
 Estimated weight: ${p.grams.toFixed(1)} g
+Estimated machine time: ${p.machineHours.toFixed(2)} hr
 Subtotal: $${p.subtotal.toFixed(2)}
 Tax (8.25%): $${p.tax.toFixed(2)}
 Total: ${totalLabel}
@@ -1151,6 +1281,11 @@ axonas3d@gmail.com`;
     technology_label: technologyLabel,
     material_label: materialLabel,
     resolution_label: resLabel,
+    layer_weight_factor: (p.layerMassMultiplier * 100).toFixed(0) + '%',
+    layer_time_factor: (p.layerTimeMultiplier * 100).toFixed(0) + '%',
+    estimated_machine_time: p.machineHours.toFixed(2) + ' hr',
+    machine_time_cost: '$' + p.machineCost.toFixed(2),
+    machine_rate: '$' + p.machineRate.toFixed(2) + '/hr',
     fill_label: fillLabel,
     quantity: String(p.qty),
     post_processing_label: postLabel,
